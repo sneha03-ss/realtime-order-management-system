@@ -1,0 +1,46 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       ordersdb
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ordersdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    # env_file loads server/.env directly into the container.
+    # This is how EMAIL_USER, EMAIL_PASS, NOTIFICATION_RECEIVER reach Node.js.
+    # The DB vars below override the .env values for Docker networking.
+    env_file:
+      - ./server/.env
+    environment:
+      # Override DB host to use Docker service name, not localhost
+      DB_HOST:     postgres
+      DB_PORT:     5432
+      DB_NAME:     ordersdb
+      DB_USER:     postgres
+      DB_PASSWORD: postgres
+      PORT:        3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pg_data:

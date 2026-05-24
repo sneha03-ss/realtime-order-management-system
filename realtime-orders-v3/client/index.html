@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OrderStream — Live Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Clash+Display:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:        #080b10;
+    --surface:   #0e1219;
+    --surface2:  #141923;
+    --border:    #1c2333;
+    --border2:   #253044;
+    --accent:    #3dffa0;
+    --accent-d:  #00c974;
+    --blue:      #4db8ff;
+    --orange:    #ff8c42;
+    --red:       #ff4d6a;
+    --text:      #dde4f0;
+    --muted:     #4a5568;
+    --muted2:    #6b7a94;
+    --mono:      'JetBrains Mono', monospace;
+    --display:   'Clash Display', sans-serif;
+    --radius:    8px;
+  }
+
+  html, body { height: 100%; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    display: grid;
+    grid-template-rows: 58px 1fr 42px;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* ── HEADER ─────────────────────────────────────────── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 1.5rem;
+    border-bottom: 1px solid var(--border);
+    background: linear-gradient(90deg, #0a0f18 0%, var(--surface) 100%);
+    position: relative;
+    z-index: 10;
+  }
+
+  .logo {
+    font-family: var(--display);
+    font-size: 1.2rem;
+    font-weight: 700;
+    letter-spacing: -.01em;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+  }
+  .logo-icon {
+    width: 22px; height: 22px;
+    background: var(--accent);
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+  }
+  .logo-icon svg { width: 13px; height: 13px; }
+  .logo span { color: var(--text); font-weight: 600; }
+
+  .header-right { display: flex; align-items: center; gap: 1rem; }
+
+  .ws-badge {
+    display: flex; align-items: center; gap: .4rem;
+    font-size: .62rem; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .28rem .7rem;
+    border-radius: 99px;
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    transition: all .3s;
+  }
+  .ws-badge.connected   { border-color: var(--accent); color: var(--accent); }
+  .ws-badge.disconnected{ border-color: var(--red);    color: var(--red); }
+  .ws-badge.connecting  { border-color: var(--orange); color: var(--orange); }
+  .ws-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .ws-dot.blink { animation: blink 1.2s ease-in-out infinite; }
+  @keyframes blink { 0%,100%{opacity:1;} 50%{opacity:.25;} }
+
+  /* ── MAIN LAYOUT ─────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    overflow: hidden;
+  }
+
+  /* ── LEFT PANEL ──────────────────────────────────────── */
+  .left {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+  }
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: .75rem 1.25rem;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    gap: .75rem;
+    flex-shrink: 0;
+  }
+
+  .toolbar-left { display: flex; align-items: center; gap: .6rem; }
+
+  .section-label {
+    font-size: .62rem;
+    font-weight: 600;
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    color: var(--muted2);
+  }
+
+  .btn {
+    font-family: var(--mono);
+    font-size: .68rem;
+    font-weight: 600;
+    letter-spacing: .05em;
+    padding: .38rem .8rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border2);
+    background: var(--surface2);
+    color: var(--text);
+    cursor: pointer;
+    transition: all .18s;
+    display: flex; align-items: center; gap: .4rem;
+    white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); color: var(--accent); }
+  .btn.primary {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #080b10;
+  }
+  .btn.primary:hover { background: var(--accent-d); border-color: var(--accent-d); }
+  .btn svg { width: 12px; height: 12px; }
+
+  .orders-scroll { flex: 1; overflow-y: auto; padding: 1rem 1.25rem; }
+
+  #orders-list { display: flex; flex-direction: column; gap: .5rem; }
+
+  .empty-state {
+    display: flex; flex-direction: column; align-items: center;
+    justify-content: center; padding: 4rem 1rem;
+    color: var(--muted); text-align: center; gap: .75rem;
+  }
+  .empty-icon {
+    width: 52px; height: 52px;
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    display: grid; place-items: center;
+    font-size: 1.5rem;
+  }
+  .empty-state p { font-size: .72rem; line-height: 1.7; color: var(--muted); }
+
+  /* ── ORDER CARD ──────────────────────────────────────── */
+  .order-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: .85rem 1rem;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    grid-template-rows: auto auto;
+    column-gap: .9rem;
+    row-gap: .35rem;
+    align-items: center;
+    transition: border-color .25s, box-shadow .25s;
+    position: relative;
+    overflow: hidden;
+  }
+  .order-card::after {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0; width: 3px;
+    background: transparent;
+    transition: background .25s;
+  }
+  .order-card.flash-insert::after  { background: var(--accent); }
+  .order-card.flash-update::after  { background: var(--blue); }
+  .order-card.flash-insert { border-color: var(--accent); box-shadow: 0 0 16px rgba(61,255,160,.1); animation: slideDown .3s ease; }
+  .order-card.flash-update { border-color: var(--blue);   box-shadow: 0 0 16px rgba(77,184,255,.1); }
+  .order-card.flash-delete { border-color: var(--red);    opacity: .5; animation: fadeOut .45s ease forwards; }
+
+  @keyframes slideDown {
+    from { opacity: 0; transform: translateY(-10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes fadeOut {
+    to { opacity: 0; max-height: 0; padding: 0; margin: 0; overflow: hidden; }
+  }
+
+  .order-id-col {
+    font-size: .62rem;
+    color: var(--muted);
+    text-align: right;
+    white-space: nowrap;
+    grid-row: 1;
+  }
+  .order-main {
+    grid-row: 1;
+    min-width: 0;
+  }
+  .order-name {
+    font-size: .83rem; font-weight: 600;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .order-product {
+    font-size: .68rem; color: var(--muted2); margin-top: .1rem;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+
+  .chip {
+    font-size: .6rem; font-weight: 600;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: .22rem .55rem;
+    border-radius: 4px;
+    white-space: nowrap;
+    grid-row: 1;
+  }
+  .chip.pending   { background: rgba(255,140,66,.12); color: var(--orange); border: 1px solid rgba(255,140,66,.25); }
+  .chip.shipped   { background: rgba(77,184,255,.12); color: var(--blue);   border: 1px solid rgba(77,184,255,.25); }
+  .chip.delivered { background: rgba(61,255,160,.12); color: var(--accent); border: 1px solid rgba(61,255,160,.25); }
+
+  .order-meta {
+    grid-column: 1 / -1; grid-row: 2;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+  .order-ts { font-size: .6rem; color: var(--muted); }
+
+  .order-actions { display: flex; gap: .35rem; }
+  .mini-btn {
+    font-family: var(--mono); font-size: .58rem; font-weight: 600;
+    letter-spacing: .06em;
+    padding: .18rem .45rem;
+    border-radius: 4px;
+    border: 1px solid var(--border2);
+    background: none;
+    color: var(--muted2);
+    cursor: pointer;
+    transition: all .15s;
+  }
+  .mini-btn:hover       { border-color: var(--blue);   color: var(--blue); }
+  .mini-btn.del-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* ── RIGHT PANEL — EVENT LOG ─────────────────────────── */
+  .right {
+    display: flex; flex-direction: column;
+    background: #090c12;
+    overflow: hidden;
+  }
+
+  .log-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .75rem 1rem;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  #event-log {
+    flex: 1; overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+
+  .log-empty {
+    padding: 2rem 1rem;
+    font-size: .68rem; color: var(--muted);
+    text-align: center;
+  }
+
+  .log-entry {
+    padding: .55rem 1rem;
+    border-bottom: 1px solid rgba(28,35,51,.7);
+    animation: logIn .2s ease;
+  }
+  .log-entry:hover { background: rgba(255,255,255,.018); }
+  @keyframes logIn {
+    from { opacity: 0; transform: translateX(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .log-time { font-size: .57rem; color: var(--muted); margin-bottom: .15rem; }
+  .log-type {
+    font-size: .65rem; font-weight: 600;
+    letter-spacing: .07em; text-transform: uppercase;
+  }
+  .log-type.INSERT    { color: var(--accent); }
+  .log-type.UPDATE    { color: var(--blue); }
+  .log-type.DELETE    { color: var(--red); }
+  .log-type.CONNECTED { color: var(--orange); }
+  .log-type.SYSTEM    { color: var(--muted2); }
+
+  .log-detail { font-size: .63rem; color: var(--muted2); margin-top: .15rem; line-height: 1.45; }
+
+  /* ── FOOTER ──────────────────────────────────────────── */
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 0 1.5rem;
+    display: flex; align-items: center; gap: 1.5rem;
+    background: var(--surface);
+    font-size: .62rem; color: var(--muted);
+  }
+  .stat { display: flex; align-items: center; gap: .35rem; }
+  .stat b { color: var(--text); font-weight: 600; }
+
+  /* ── MODAL ───────────────────────────────────────────── */
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.65);
+    backdrop-filter: blur(4px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 100;
+    opacity: 0; pointer-events: none;
+    transition: opacity .2s;
+  }
+  .modal-overlay.open { opacity: 1; pointer-events: all; }
+
+  .modal {
+    background: var(--surface);
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    padding: 1.5rem;
+    width: 400px;
+    max-width: 90vw;
+    transform: translateY(-12px) scale(.97);
+    transition: transform .2s;
+  }
+  .modal-overlay.open .modal { transform: none; }
+
+  .modal-title {
+    font-family: var(--display);
+    font-size: 1rem; font-weight: 700;
+    color: var(--text); margin-bottom: 1.25rem;
+  }
+
+  .field { margin-bottom: .85rem; }
+  .field label {
+    display: block; font-size: .62rem; font-weight: 600;
+    letter-spacing: .1em; text-transform: uppercase;
+    color: var(--muted2); margin-bottom: .35rem;
+  }
+  .field input, .field select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: .78rem;
+    padding: .55rem .75rem;
+    outline: none;
+    transition: border-color .2s;
+  }
+  .field input:focus, .field select:focus { border-color: var(--accent); }
+  .field select option { background: var(--surface); }
+
+  .modal-actions { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1.25rem; }
+
+  .modal-err {
+    font-size: .65rem; color: var(--red);
+    margin-top: .6rem; min-height: 1rem;
+  }
+
+  /* ── STATUS MENU ─────────────────────────────────────── */
+  .status-menu {
+    position: fixed;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    border-radius: 8px;
+    padding: .3rem;
+    z-index: 200;
+    min-width: 130px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.5);
+  }
+  .status-menu-item {
+    font-family: var(--mono); font-size: .7rem;
+    padding: .45rem .7rem;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background .15s;
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .status-menu-item:hover { background: rgba(255,255,255,.06); }
+  .status-dot { width: 7px; height: 7px; border-radius: 50%; }
+  .sd-pending   { background: var(--orange); }
+  .sd-shipped   { background: var(--blue); }
+  .sd-delivered { background: var(--accent); }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 3px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo">
+    <div class="logo-icon">
+      <svg viewBox="0 0 13 13" fill="none">
+        <rect x="1" y="1" width="5" height="5" rx="1" fill="#080b10"/>
+        <rect x="7" y="1" width="5" height="5" rx="1" fill="#080b10"/>
+        <rect x="1" y="7" width="5" height="5" rx="1" fill="#080b10"/>
+        <rect x="7" y="7" width="5" height="5" rx="1" fill="#080b10"/>
+      </svg>
+    </div>
+    Order<span>Stream</span>
+  </div>
+  <div class="header-right">
+    <div class="ws-badge connecting" id="ws-badge">
+      <div class="ws-dot blink" id="ws-dot"></div>
+      <span id="ws-text">Connecting</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <!-- LEFT: orders -->
+  <div class="left">
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <div class="section-label">Live Orders</div>
+      </div>
+      <div style="display:flex;gap:.5rem">
+        <button class="btn" onclick="loadOrders()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8">
+            <path d="M13.5 8A5.5 5.5 0 1 1 8 2.5" stroke-linecap="round"/>
+            <path d="M8 1v3.5L10 6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          Refresh
+        </button>
+        <button class="btn primary" onclick="openCreateModal()">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M8 3v10M3 8h10" stroke-linecap="round"/>
+          </svg>
+          New Order
+        </button>
+      </div>
+    </div>
+    <div class="orders-scroll">
+      <div id="orders-list">
+        <div class="empty-state">
+          <div class="empty-icon">📦</div>
+          <p>Connecting to server…<br/>Make sure the backend is running on <code>localhost:3000</code></p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT: event log -->
+  <div class="right">
+    <div class="log-header">
+      <span class="section-label">Event Log</span>
+      <button class="btn" style="padding:.25rem .6rem;font-size:.58rem" onclick="clearLog()">Clear</button>
+    </div>
+    <div id="event-log">
+      <div class="log-empty">Waiting for events…</div>
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="stat">Total <b id="st-total">—</b></div>
+  <div class="stat">Pending <b id="st-pending">—</b></div>
+  <div class="stat">Shipped <b id="st-shipped">—</b></div>
+  <div class="stat">Delivered <b id="st-delivered">—</b></div>
+  <div class="stat" style="margin-left:auto">Events <b id="st-events">0</b></div>
+</footer>
+
+<!-- Create Order Modal -->
+<div class="modal-overlay" id="create-modal">
+  <div class="modal">
+    <div class="modal-title">New Order</div>
+    <div class="field">
+      <label>Customer Name</label>
+      <input id="f-customer" type="text" placeholder="e.g. Alice Johnson" />
+    </div>
+    <div class="field">
+      <label>Customer Email</label>
+      <input id="f-email" type="email" placeholder="e.g. alice@example.com" />
+    </div>
+    <div class="field">
+      <label>Product Name</label>
+      <input id="f-product" type="text" placeholder="e.g. Wireless Headphones" />
+    </div>
+    <div class="field">
+      <label>Status</label>
+      <select id="f-status">
+        <option value="pending">Pending</option>
+        <option value="shipped">Shipped</option>
+        <option value="delivered">Delivered</option>
+      </select>
+    </div>
+    <div class="modal-err" id="create-err"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('create-modal')">Cancel</button>
+      <button class="btn primary" onclick="submitCreate()">Create Order</button>
+    </div>
+  </div>
+</div>
+
+<!-- Status context menu -->
+<div class="status-menu" id="status-menu" style="display:none">
+  <div class="status-menu-item" onclick="setStatus('pending')">
+    <div class="status-dot sd-pending"></div> Pending
+  </div>
+  <div class="status-menu-item" onclick="setStatus('shipped')">
+    <div class="status-dot sd-shipped"></div> Shipped
+  </div>
+  <div class="status-menu-item" onclick="setStatus('delivered')">
+    <div class="status-dot sd-delivered"></div> Delivered
+  </div>
+</div>
+
+<script>
+  const API = 'http://localhost:3000';
+  const WS  = 'ws://localhost:3000';
+
+  let orders     = {};    // id → order
+  let eventCount = 0;
+  let ws;
+  let menuOrderId = null;
+
+  // ── Utility ─────────────────────────────────────────────
+  const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  function fmt(ts) {
+    return new Date(ts).toLocaleString('en-US', { hour12: false,
+      month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' });
+  }
+
+  function updateStats() {
+    const all = Object.values(orders);
+    document.getElementById('st-total').textContent     = all.length;
+    document.getElementById('st-pending').textContent   = all.filter(o=>o.status==='pending').length;
+    document.getElementById('st-shipped').textContent   = all.filter(o=>o.status==='shipped').length;
+    document.getElementById('st-delivered').textContent = all.filter(o=>o.status==='delivered').length;
+  }
+
+  // ── Render ───────────────────────────────────────────────
+  function renderAll() {
+    const list = document.getElementById('orders-list');
+    const all  = Object.values(orders).sort((a,b) =>
+      new Date(b.updated_at) - new Date(a.updated_at));
+
+    if (!all.length) {
+      list.innerHTML = `<div class="empty-state">
+        <div class="empty-icon">📦</div>
+        <p>No orders yet.<br/>Click <strong>New Order</strong> to create one.</p>
+      </div>`;
+      updateStats();
+      return;
+    }
+
+    // update or create cards without full re-render
+    const existing = new Set(Object.keys(orders).map(String));
+    all.forEach(o => {
+      let el = document.getElementById(`card-${o.id}`);
+      const html = cardHTML(o);
+      if (el) {
+        el.innerHTML = html;
+      } else {
+        const div = document.createElement('div');
+        div.className = 'order-card';
+        div.id = `card-${o.id}`;
+        div.innerHTML = html;
+        list.prepend(div);
+      }
+    });
+
+    // remove stale cards
+    list.querySelectorAll('.order-card').forEach(el => {
+      const id = el.id.replace('card-', '');
+      if (!existing.has(id)) el.remove();
+    });
+
+    // remove empty state if present
+    const empty = list.querySelector('.empty-state');
+    if (empty && all.length) empty.remove();
+
+    updateStats();
+  }
+
+  function cardHTML(o) {
+    return `
+      <div class="order-id-col">#${o.id}</div>
+      <div class="order-main">
+        <div class="order-name">${esc(o.customer_name)}</div>
+        <div class="order-product">${esc(o.product_name)}</div>
+        <div class="order-email" style="font-size:.62rem;color:var(--muted);margin-top:.08rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${esc(o.customer_email || '')}</div>
+      </div>
+      <div class="chip ${o.status}">${o.status}</div>
+      <div class="order-meta">
+        <div class="order-ts">${fmt(o.updated_at)}</div>
+        <div class="order-actions">
+          <button class="mini-btn" onclick="openStatusMenu(event, ${o.id})">Status ▾</button>
+          <button class="mini-btn del-btn" onclick="confirmDelete(${o.id})">Delete</button>
+        </div>
+      </div>
+    `;
+  }
+
+  function flashCard(id, type) {
+    const el = document.getElementById(`card-${id}`);
+    if (!el) return;
+    const cls = `flash-${type}`;
+    el.classList.add(cls);
+    setTimeout(() => el.classList.remove(cls), 1800);
+  }
+
+  function animateDelete(id) {
+    const el = document.getElementById(`card-${id}`);
+    if (!el) return;
+    el.classList.add('flash-delete');
+    setTimeout(() => el.remove(), 460);
+  }
+
+  // ── Log ─────────────────────────────────────────────────
+  function addLog(type, detail) {
+    const log = document.getElementById('event-log');
+    const empty = log.querySelector('.log-empty');
+    if (empty) empty.remove();
+
+    eventCount++;
+    document.getElementById('st-events').textContent = eventCount;
+
+    const div = document.createElement('div');
+    div.className = 'log-entry';
+    div.innerHTML = `
+      <div class="log-time">${new Date().toLocaleTimeString('en-US',{hour12:false})}</div>
+      <div class="log-type ${type}">${type}</div>
+      <div class="log-detail">${detail}</div>
+    `;
+    log.prepend(div);
+    while (log.children.length > 120) log.lastChild.remove();
+  }
+
+  function clearLog() {
+    document.getElementById('event-log').innerHTML = '<div class="log-empty">Log cleared.</div>';
+    eventCount = 0;
+    document.getElementById('st-events').textContent = 0;
+  }
+
+  // ── WS Status ────────────────────────────────────────────
+  function setWsStatus(state) {
+    const badge = document.getElementById('ws-badge');
+    const dot   = document.getElementById('ws-dot');
+    const txt   = document.getElementById('ws-text');
+    badge.className = `ws-badge ${state}`;
+    dot.className   = `ws-dot ${state === 'connecting' ? 'blink' : ''}`;
+    txt.textContent = {connected:'Live',disconnected:'Offline',connecting:'Connecting'}[state];
+  }
+
+  // ── Data Fetching ────────────────────────────────────────
+  async function loadOrders() {
+    try {
+      const res  = await fetch(`${API}/orders`);
+      const data = await res.json();
+      if (data.success) {
+        orders = {};
+        data.data.forEach(o => orders[o.id] = o);
+        renderAll();
+        addLog('SYSTEM', `Loaded ${data.data.length} orders from server`);
+      }
+    } catch (e) {
+      addLog('SYSTEM', 'Could not reach server — is it running on :3000?');
+    }
+  }
+
+  // ── WebSocket ────────────────────────────────────────────
+  function connect() {
+    setWsStatus('connecting');
+    ws = new WebSocket(WS);
+
+    ws.onopen = () => {
+      setWsStatus('connected');
+      addLog('CONNECTED', 'WebSocket established');
+      loadOrders();
+    };
+
+    ws.onmessage = (evt) => {
+      let msg;
+      try { msg = JSON.parse(evt.data); } catch { return; }
+
+      if (msg.type === 'PING') { ws.send(JSON.stringify({type:'PONG'})); return; }
+      if (msg.type !== 'ORDER_CHANGE') return;
+
+      const { event, new: nr, old: or } = msg;
+
+      if (event === 'INSERT' && nr) {
+        orders[nr.id] = nr;
+        renderAll();
+        flashCard(nr.id, 'insert');
+        addLog('INSERT', `#${nr.id} · ${esc(nr.customer_name)} &lt;${esc(nr.customer_email || '')}&gt; — ${esc(nr.product_name)} [${nr.status}]`);
+      }
+      else if (event === 'UPDATE' && nr) {
+        orders[nr.id] = nr;
+        renderAll();
+        flashCard(nr.id, 'update');
+        const change = or && or.status !== nr.status
+          ? `status: ${or.status} → ${nr.status}`
+          : `fields updated`;
+        addLog('UPDATE', `#${nr.id} · ${esc(nr.customer_name)} — ${change}`);
+      }
+      else if (event === 'DELETE' && or) {
+        animateDelete(or.id);
+        delete orders[or.id];
+        updateStats();
+        addLog('DELETE', `#${or.id} · ${esc(or.customer_name)} removed`);
+      }
+    };
+
+    ws.onclose = () => {
+      setWsStatus('disconnected');
+      addLog('SYSTEM', 'Connection lost — retrying in 4s…');
+      setTimeout(connect, 4000);
+    };
+  }
+
+  // ── Modal ────────────────────────────────────────────────
+  function openCreateModal() {
+    document.getElementById('f-customer').value = '';
+    document.getElementById('f-email').value    = '';
+    document.getElementById('f-product').value  = '';
+    document.getElementById('f-status').value   = 'pending';
+    document.getElementById('create-err').textContent = '';
+    document.getElementById('create-modal').classList.add('open');
+    setTimeout(() => document.getElementById('f-customer').focus(), 120);
+  }
+
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('open');
+  }
+
+  async function submitCreate() {
+    const customer_name  = document.getElementById('f-customer').value.trim();
+    const customer_email = document.getElementById('f-email').value.trim();
+    const product_name   = document.getElementById('f-product').value.trim();
+    const status         = document.getElementById('f-status').value;
+    const errEl          = document.getElementById('create-err');
+
+    if (!customer_name || !product_name) {
+      errEl.textContent = 'Customer name and product name are required.';
+      return;
+    }
+    if (!customer_email) {
+      errEl.textContent = 'Customer email is required.';
+      return;
+    }
+    const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRe.test(customer_email)) {
+      errEl.textContent = 'Please enter a valid email address.';
+      return;
+    }
+    errEl.textContent = '';
+
+    try {
+      const res  = await fetch(`${API}/orders`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_name, customer_email, product_name, status }),
+      });
+      const data = await res.json();
+      if (!data.success) { errEl.textContent = data.error; return; }
+      closeModal('create-modal');
+      // WS event will update the UI automatically
+    } catch (e) {
+      errEl.textContent = 'Server unreachable.';
+    }
+  }
+
+  // ── Status menu ──────────────────────────────────────────
+  function openStatusMenu(evt, orderId) {
+    evt.stopPropagation();
+    menuOrderId = orderId;
+    const menu = document.getElementById('status-menu');
+    menu.style.display = 'block';
+    // position near cursor
+    const x = Math.min(evt.clientX, window.innerWidth - 150);
+    const y = Math.min(evt.clientY + 8, window.innerHeight - 120);
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+  }
+
+  async function setStatus(status) {
+    document.getElementById('status-menu').style.display = 'none';
+    if (!menuOrderId) return;
+    try {
+      await fetch(`${API}/orders/${menuOrderId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      });
+    } catch (e) {
+      addLog('SYSTEM', `Failed to update #${menuOrderId}`);
+    }
+    menuOrderId = null;
+  }
+
+  async function confirmDelete(id) {
+    if (!confirm(`Delete order #${id}? This cannot be undone.`)) return;
+    try {
+      await fetch(`${API}/orders/${id}`, { method: 'DELETE' });
+    } catch (e) {
+      addLog('SYSTEM', `Failed to delete #${id}`);
+    }
+  }
+
+  // close menu on outside click
+  document.addEventListener('click', () => {
+    document.getElementById('status-menu').style.display = 'none';
+  });
+
+  // modal keyboard close
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      closeModal('create-modal');
+      document.getElementById('status-menu').style.display = 'none';
+    }
+    if (e.key === 'Enter' && document.getElementById('create-modal').classList.contains('open')) {
+      submitCreate();
+    }
+  });
+
+  connect();
+</script>
+</body>
+</html>
